@@ -57,7 +57,7 @@ jobs:
                 "Description": "OAC for private S3",
                 "SigningProtocol": "sigv4",
                 "SigningBehavior": "always",
-                "OriginType": "s3"
+                "OriginAccessControlOriginType": "s3"
               }' --query 'OriginAccessControl.Id' --output text)
           fi
           echo "OAC_ID=$OAC_ID" >> $GITHUB_ENV
