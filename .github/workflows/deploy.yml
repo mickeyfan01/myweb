@@ -20,17 +20,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC - no secrets!)
+      - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::450974104061:role/github-myweb-role
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Create S3 bucket (safe if exists)
+      - name: Create S3 bucket
         run: |
           aws s3 mb s3://$BUCKET_NAME --region $AWS_REGION || echo "Bucket already exists"
+          # Ensure ACLs are disabled so the Bucket Policy is the source of truth
+          aws s3api put-public-access-block \
+            --bucket $BUCKET_NAME \
+            --public-access-block-configuration "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 
-      - name: Upload site to S3 (make bucket private)
+      - name: Upload site to S3
         run: |
           aws s3 sync . s3://$BUCKET_NAME \
             --delete \
@@ -38,99 +42,71 @@ jobs:
             --exclude ".github/*" \
             --exclude "README.md"
 
-      - name: Check existing CloudFront distribution
+      - name: Find or Create OAC
+        id: oac
         run: |
-          DIST_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
+          # Try to find existing OAC first
+          OAC_ID=$(aws cloudfront list-origin-access-controls \
+            --query "OriginAccessControlList.Items[?Name=='myweb-oac'].Id" \
             --output text)
-          if [ "$DIST_ID" = "None" ] || [ -z "$DIST_ID" ]; then
-            DIST_ID=""
+          
+          if [ -z "$OAC_ID" ] || [ "$OAC_ID" = "None" ]; then
+            OAC_ID=$(aws cloudfront create-origin-access-control \
+              --origin-access-control-config '{
+                "Name": "myweb-oac",
+                "Description": "OAC for private S3",
+                "SigningProtocol": "sigv4",
+                "SigningBehavior": "always",
+                "OriginType": "s3"
+              }' --query 'OriginAccessControl.Id' --output text)
+          fi
+          echo "OAC_ID=$OAC_ID" >> $GITHUB_ENV
+
+      - name: Find or Create Distribution
+        id: cf
+        run: |
+          # Search for distribution by the S3 bucket domain
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Origins.Items[0].DomainName=='${{ env.BUCKET_NAME }}.s3.${{ env.AWS_REGION }}.amazonaws.com'].Id" \
+            --output text)
+
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            cat > cf-config.json <<EOF
+            {
+              "CallerReference": "myweb-$(date +%s)",
+              "Comment": "Static website with OAC",
+              "Enabled": true,
+              "DefaultRootObject": "index.html",
+              "Origins": {
+                "Quantity": 1,
+                "Items": [
+                  {
+                    "Id": "S3Origin",
+                    "DomainName": "${{ env.BUCKET_NAME }}.s3.${{ env.AWS_REGION }}.amazonaws.com",
+                    "OriginAccessControlId": "${{ env.OAC_ID }}",
+                    "S3OriginConfig": { "OriginAccessIdentity": "" }
+                  }
+                ]
+              },
+              "DefaultCacheBehavior": {
+                "TargetOriginId": "S3Origin",
+                "ViewerProtocolPolicy": "redirect-to-https",
+                "AllowedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] },
+                "ForwardedValues": { "QueryString": false, "Cookies": { "Forward": "none" } }
+              },
+              "ViewerCertificate": { "CloudFrontDefaultCertificate": true }
+            }
+          EOF
+            DIST_ID=$(aws cloudfront create-distribution \
+              --distribution-config file://cf-config.json \
+              --query 'Distribution.Id' --output text)
           fi
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
 
-      - name: Create CloudFront Origin Access Control (first run only)
-        if: env.DIST_ID == ''
-        run: |
-          OAC_ID=$(aws cloudfront create-origin-access-control \
-            --origin-access-control-config '{
-              "Name": "myweb-oac",
-              "Description": "OAC for private S3 bucket",
-              "SigningProtocol": "sigv4",
-              "SigningBehavior": "always",
-              "OriginType": "s3"
-            }' \
-            --query 'OriginAccessControl.Id' \
-            --output text)
-          echo "OAC_ID=$OAC_ID" >> $GITHUB_ENV
-
-      - name: Create CloudFront distribution (first run only)
-        if: env.DIST_ID == ''
-        run: |
-          cat > cf-config.json <<EOF
-          {
-            "CallerReference": "myweb-$(date +%s)",
-            "Comment": "Static website with private S3 + OAC",
-            "Enabled": true,
-            "DefaultRootObject": "index.html",
-            "Origins": {
-              "Quantity": 1,
-              "Items": [
-                {
-                  "Id": "S3Origin",
-                  "DomainName": "$BUCKET_NAME.s3.amazonaws.com",
-                  "OriginAccessControlId": "$OAC_ID",
-                  "S3OriginConfig": {
-                    "OriginAccessIdentity": ""
-                  }
-                }
-              ]
-            },
-            "DefaultCacheBehavior": {
-              "TargetOriginId": "S3Origin",
-              "ViewerProtocolPolicy": "redirect-to-https",
-              "AllowedMethods": {
-                "Quantity": 2,
-                "Items": ["GET","HEAD"],
-                "CachedMethods": {
-                  "Quantity": 2,
-                  "Items": ["GET","HEAD"]
-                }
-              },
-              "ForwardedValues": {
-                "QueryString": false,
-                "Cookies": { "Forward": "none" }
-              }
-            },
-            "Restrictions": {
-              "GeoRestriction": {
-                "RestrictionType": "none",
-                "Quantity": 0
-              }
-            },
-            "ViewerCertificate": {
-              "CloudFrontDefaultCertificate": true
-            }
-          }
-          EOF
-
-          DIST_ID=$(aws cloudfront create-distribution \
-            --distribution-config file://cf-config.json \
-            --query 'Distribution.Id' \
-            --output text)
-          echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
-
-      - name: Fetch CloudFront domain name
-        run: |
-          DOMAIN=$(aws cloudfront get-distribution \
-            --id $DIST_ID \
-            --query 'Distribution.DomainName' \
-            --output text)
-          echo "CF_DOMAIN=$DOMAIN" >> $GITHUB_ENV
-
-      - name: Update S3 bucket policy (allow only this CloudFront)
+      - name: Update S3 bucket policy
         run: |
           aws s3api put-bucket-policy \
-            --bucket $BUCKET_NAME \
+            --bucket ${{ env.BUCKET_NAME }} \
             --policy '{
               "Version": "2012-10-17",
               "Statement": [
@@ -138,23 +114,24 @@ jobs:
                   "Effect": "Allow",
                   "Principal": { "Service": "cloudfront.amazonaws.com" },
                   "Action": "s3:GetObject",
-                  "Resource": "arn:aws:s3:::'"$BUCKET_NAME"'/*",
-                  "Condition": { "StringEquals": { "AWS:SourceArn": "arn:aws:cloudfront::450974104061:distribution/'"$DIST_ID"'" } }
+                  "Resource": "arn:aws:s3:::${{ env.BUCKET_NAME }}/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::450974104061:distribution/${{ env.DIST_ID }}"
+                    }
+                  }
                 }
               ]
             }'
 
-      - name: Wait for CloudFront distribution to be deployed
-        run: aws cloudfront wait distribution-deployed --id $DIST_ID
-
-      - name: Invalidate CloudFront cache
+      - name: Invalidate Cache
         run: |
           aws cloudfront create-invalidation \
-            --distribution-id $DIST_ID \
+            --distribution-id ${{ env.DIST_ID }} \
             --paths "/*"
 
-      - name: Show website URL
+      - name: Show Result
         run: |
+          DOMAIN=$(aws cloudfront get-distribution --id ${{ env.DIST_ID }} --query 'Distribution.DomainName' --output text)
           echo "✅ Deployment complete!"
-          echo "🌐 Your website is live at:"
-          echo "https://$CF_DOMAIN"
+          echo "🌐 URL: https://$DOMAIN"
