@@ -64,18 +64,14 @@ The website is deployed on AWS S3 and served via CloudFront with automated deplo
 - Provides an all-in-one hosting solution with CI/CD.
 - I didn’t use it here to show manual control and understanding of the underlying infrastructure.
 
-### EC2 / Lightsail
-- Hosting static content on virtual servers is possible but unnecessary for static sites.
-- Chose S3 + CloudFront for simplicity, cost efficiency, and scalability.
-
 ### GCP Hosting
 - Google Cloud Storage + Cloud CDN would offer similar functionality.
-- AWS was chosen due to familiarity and robust OIDC support with GitHub Actions.
+- AWS was chosen due to familiarity
 
 ## Production-Grade Considerations
 
 ### Infrastructure as Code (IaC)
- - Use Terraform or CloudFormation to provision S3, CloudFront, OAC, and Route 53 resources automatically.
+ - Use Terraform to provision S3, CloudFront, OAC resources automatically.
 
 ### Multi-Environment CI/CD
  - Separate staging and production deployments
