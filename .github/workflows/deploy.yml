@@ -65,7 +65,7 @@ jobs:
       - name: Find or Create Distribution
         id: cf
         run: |
-          # Search for distribution by the S3 bucket domain
+          # Search for distribution by the regional S3 bucket domain
           DIST_ID=$(aws cloudfront list-distributions \
             --query "DistributionList.Items[?Origins.Items[0].DomainName=='${{ env.BUCKET_NAME }}.s3.${{ env.AWS_REGION }}.amazonaws.com'].Id" \
             --output text)
@@ -91,10 +91,12 @@ jobs:
               "DefaultCacheBehavior": {
                 "TargetOriginId": "S3Origin",
                 "ViewerProtocolPolicy": "redirect-to-https",
-                "AllowedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] },
-                "ForwardedValues": { "QueryString": false, "Cookies": { "Forward": "none" } }
-              },
-              "ViewerCertificate": { "CloudFrontDefaultCertificate": true }
+                "AllowedMethods": { 
+                  "Quantity": 2, 
+                  "Items": ["GET","HEAD"] 
+                },
+                "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
+              }
             }
           EOF
             DIST_ID=$(aws cloudfront create-distribution \
