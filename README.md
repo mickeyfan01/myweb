@@ -52,7 +52,7 @@ The website is deployed on AWS S3 and served via CloudFront with automated deplo
 - Implement staging and production environments.
 
 ### Monitoring & Security
--Enable CloudFront logs and CloudWatch metrics for monitoring.
+- Enable CloudFront logs and CloudWatch metrics for monitoring.
 - Add WAF rules for protection against common web attacks.
 
 ### Scalability & Resilience
