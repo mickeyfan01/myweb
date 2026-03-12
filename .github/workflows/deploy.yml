@@ -9,6 +9,9 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  BUCKET_NAME: mickeyfan01-myweb
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -20,55 +23,80 @@ jobs:
       - name: Configure AWS credentials (OIDC - no secrets!)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::829779198710:role/github-actions-myweb   # ← CHANGE THIS
+          role-to-assume: arn:aws:iam::829779198710:role/github-actions-myweb
           aws-region: us-east-1
 
-
       - name: Create S3 bucket (safe if exists)
-        run: aws s3 mb s3://mickeyfan01-myweb --region us-east-1 || echo "Bucket already exists"
+        run: |
+          aws s3 mb s3://$BUCKET_NAME --region us-east-1 || echo "Bucket already exists"
 
-      - name: Upload index.html to S3 (this is the key step you asked for)
-        run: aws s3 sync . s3://mickeyfan01-myweb --delete --exclude ".git/*" --exclude ".github/*" --exclude "README.md" 
+      - name: Upload site to S3
+        run: |
+          aws s3 sync . s3://$BUCKET_NAME \
+            --delete \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --exclude "README.md"
 
+      - name: Check if CloudFront distribution exists
+        id: check_cf
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
+            --output text)
 
-      - name: Create CloudFront distribution
+          echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
+
+      - name: Create CloudFront distribution (only first run)
+        if: env.DIST_ID == ''
         run: |
           cat > cf-config.json <<EOF
           {
             "CallerReference": "myweb-$(date +%s)",
             "Comment": "Static website distribution",
             "Enabled": true,
+            "DefaultRootObject": "index.html",
             "Origins": {
               "Quantity": 1,
               "Items": [
                 {
-                  "Id": "S3-mickeyfan01-myweb",
-                  "DomainName": "mickeyfan01-myweb.s3.amazonaws.com",
+                  "Id": "S3Origin",
+                  "DomainName": "$BUCKET_NAME.s3.amazonaws.com",
                   "S3OriginConfig": {
                     "OriginAccessIdentity": ""
                   }
                 }
               ]
             },
-            "DefaultRootObject": "index.html",
             "DefaultCacheBehavior": {
-              "TargetOriginId": "S3-mickeyfan01-myweb",
+              "TargetOriginId": "S3Origin",
               "ViewerProtocolPolicy": "redirect-to-https",
               "AllowedMethods": {
                 "Quantity": 2,
-                "Items": ["GET", "HEAD"]
+                "Items": ["GET", "HEAD"],
+                "CachedMethods": {
+                  "Quantity": 2,
+                  "Items": ["GET", "HEAD"]
+                }
               },
               "ForwardedValues": {
                 "QueryString": false,
-                "Cookies": {
-                  "Forward": "none"
-                }
+                "Cookies": { "Forward": "none" }
               },
               "TrustedSigners": {
                 "Enabled": false,
                 "Quantity": 0
               },
               "MinTTL": 0
+            },
+            "Restrictions": {
+              "GeoRestriction": {
+                "RestrictionType": "none",
+                "Quantity": 0
+              }
+            },
+            "ViewerCertificate": {
+              "CloudFrontDefaultCertificate": true
             }
           }
           EOF
@@ -76,3 +104,17 @@ jobs:
           aws cloudfront create-distribution \
             --distribution-config file://cf-config.json
 
+      - name: Get CloudFront Distribution ID
+        if: env.DIST_ID == ''
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
+            --output text)
+
+          echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id $DIST_ID \
+            --paths "/*"
