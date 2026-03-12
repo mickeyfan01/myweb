@@ -38,16 +38,19 @@ jobs:
             --exclude ".github/*" \
             --exclude "README.md"
 
-      - name: Check if CloudFront distribution exists
-        id: check_cf
+      - name: Check existing CloudFront distribution
         run: |
           DIST_ID=$(aws cloudfront list-distributions \
             --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
             --output text)
 
+          if [ "$DIST_ID" = "None" ]; then
+            DIST_ID=""
+          fi
+
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
 
-      - name: Create CloudFront distribution (only first run)
+      - name: Create CloudFront distribution (first run only)
         if: env.DIST_ID == ''
         run: |
           cat > cf-config.json <<EOF
@@ -73,10 +76,10 @@ jobs:
               "ViewerProtocolPolicy": "redirect-to-https",
               "AllowedMethods": {
                 "Quantity": 2,
-                "Items": ["GET", "HEAD"],
+                "Items": ["GET","HEAD"],
                 "CachedMethods": {
                   "Quantity": 2,
-                  "Items": ["GET", "HEAD"]
+                  "Items": ["GET","HEAD"]
                 }
               },
               "ForwardedValues": {
@@ -101,20 +104,37 @@ jobs:
           }
           EOF
 
-          aws cloudfront create-distribution \
-            --distribution-config file://cf-config.json
+          DIST_ID=$(aws cloudfront create-distribution \
+            --distribution-config file://cf-config.json \
+            --query 'Distribution.Id' \
+            --output text)
 
-      - name: Get CloudFront Distribution ID
-        if: env.DIST_ID == ''
-        run: |
-          DIST_ID=$(aws cloudfront list-distributions \
-            --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
+          DOMAIN=$(aws cloudfront get-distribution \
+            --id $DIST_ID \
+            --query 'Distribution.DomainName' \
             --output text)
 
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
+          echo "CF_DOMAIN=$DOMAIN" >> $GITHUB_ENV
+
+      - name: Fetch CloudFront domain (existing distribution)
+        if: env.DIST_ID != ''
+        run: |
+          DOMAIN=$(aws cloudfront get-distribution \
+            --id $DIST_ID \
+            --query 'Distribution.DomainName' \
+            --output text)
+
+          echo "CF_DOMAIN=$DOMAIN" >> $GITHUB_ENV
 
       - name: Invalidate CloudFront cache
+        if: env.DIST_ID != ''
         run: |
           aws cloudfront create-invalidation \
             --distribution-id $DIST_ID \
             --paths "/*"
+
+      - name: Show website URL
+        run: |
+          echo "Website deployed at:"
+          echo "https://$CF_DOMAIN"
