@@ -68,13 +68,13 @@ jobs:
 
           echo "OAC_ID=$OAC_ID" >> $GITHUB_ENV
 
-      - name: Create CloudFront distribution (first run only)
+          - name: Create CloudFront distribution (first run only)
         if: env.DIST_ID == ''
         run: |
           cat > cf-config.json <<EOF
           {
             "CallerReference": "myweb-$(date +%s)",
-            "Comment": "Static website distribution with private S3",
+            "Comment": "Static website distribution with private S3 + OAC",
             "Enabled": true,
             "DefaultRootObject": "index.html",
             "Origins": {
@@ -83,7 +83,10 @@ jobs:
                 {
                   "Id": "S3Origin",
                   "DomainName": "$BUCKET_NAME.s3.amazonaws.com",
-                  "OriginAccessControlId": "$OAC_ID"
+                  "OriginAccessControlId": "$OAC_ID",
+                  "S3OriginConfig": {
+                    "OriginAccessIdentity": ""
+                  }
                 }
               ]
             },
@@ -119,9 +122,8 @@ jobs:
             --distribution-config file://cf-config.json \
             --query 'Distribution.Id' \
             --output text)
-
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
-
+          
       - name: Fetch CloudFront domain
         run: |
           DOMAIN=$(aws cloudfront get-distribution \
