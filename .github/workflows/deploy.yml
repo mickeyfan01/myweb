@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  BUCKET_NAME: mickeyfan01-myweb
+  BUCKET_NAME: mickeyfan01-myweb-s3
 
 jobs:
   deploy:
