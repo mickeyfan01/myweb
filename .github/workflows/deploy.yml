@@ -16,7 +16,6 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +30,7 @@ jobs:
         run: |
           aws s3 mb s3://$BUCKET_NAME --region $AWS_REGION || echo "Bucket already exists"
 
-      - name: Upload site to S3
+      - name: Upload site to S3 (make bucket private)
         run: |
           aws s3 sync . s3://$BUCKET_NAME \
             --delete \
@@ -44,37 +43,33 @@ jobs:
           DIST_ID=$(aws cloudfront list-distributions \
             --query "DistributionList.Items[?Origins.Items[0].DomainName=='$BUCKET_NAME.s3.amazonaws.com'].Id" \
             --output text)
-
-          if [ "$DIST_ID" = "None" ]; then
+          if [ "$DIST_ID" = "None" ] || [ -z "$DIST_ID" ]; then
             DIST_ID=""
           fi
-
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
 
       - name: Create CloudFront Origin Access Control (first run only)
         if: env.DIST_ID == ''
         run: |
-          # Create OAC so CloudFront can access private S3
           OAC_ID=$(aws cloudfront create-origin-access-control \
             --origin-access-control-config '{
               "Name": "myweb-oac",
-              "Description": "OAC for private S3",
+              "Description": "OAC for private S3 bucket",
               "SigningProtocol": "sigv4",
               "SigningBehavior": "always",
               "OriginType": "s3"
             }' \
             --query 'OriginAccessControl.Id' \
             --output text)
-
           echo "OAC_ID=$OAC_ID" >> $GITHUB_ENV
 
-          - name: Create CloudFront distribution (first run only)
+      - name: Create CloudFront distribution (first run only)
         if: env.DIST_ID == ''
         run: |
           cat > cf-config.json <<EOF
           {
             "CallerReference": "myweb-$(date +%s)",
-            "Comment": "Static website distribution with private S3 + OAC",
+            "Comment": "Static website with private S3 + OAC",
             "Enabled": true,
             "DefaultRootObject": "index.html",
             "Origins": {
@@ -123,17 +118,16 @@ jobs:
             --query 'Distribution.Id' \
             --output text)
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
-          
-      - name: Fetch CloudFront domain
+
+      - name: Fetch CloudFront domain name
         run: |
           DOMAIN=$(aws cloudfront get-distribution \
             --id $DIST_ID \
             --query 'Distribution.DomainName' \
             --output text)
-
           echo "CF_DOMAIN=$DOMAIN" >> $GITHUB_ENV
 
-      - name: Update S3 bucket policy for CloudFront access
+      - name: Update S3 bucket policy (allow only this CloudFront)
         run: |
           aws s3api put-bucket-policy \
             --bucket $BUCKET_NAME \
@@ -150,6 +144,9 @@ jobs:
               ]
             }'
 
+      - name: Wait for CloudFront distribution to be deployed
+        run: aws cloudfront wait distribution-deployed --id $DIST_ID
+
       - name: Invalidate CloudFront cache
         run: |
           aws cloudfront create-invalidation \
@@ -158,5 +155,6 @@ jobs:
 
       - name: Show website URL
         run: |
-          echo "Website deployed at:"
+          echo "✅ Deployment complete!"
+          echo "🌐 Your website is live at:"
           echo "https://$CF_DOMAIN"
