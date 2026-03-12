@@ -11,6 +11,7 @@ permissions:
 
 env:
   BUCKET_NAME: mickeyfan01-myweb-s3
+  AWS_REGION: us-east-1
 
 jobs:
   deploy:
@@ -24,28 +25,11 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::450974104061:role/github-myweb-role
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Create S3 bucket (safe if exists)
         run: |
-          aws s3 mb s3://$BUCKET_NAME --region us-east-1 || echo "Bucket already exists"
-
-
-      - name: Make S3 bucket public
-        run: |
-          aws s3api put-bucket-policy \
-            --bucket $BUCKET_NAME \
-            --policy '{
-              "Version": "2012-10-17",
-              "Statement": [
-                {
-                  "Effect": "Allow",
-                  "Principal": "*",
-                  "Action": "s3:GetObject",
-                  "Resource": "arn:aws:s3:::'"$BUCKET_NAME"'/*"
-                }
-              ]
-            }'
+          aws s3 mb s3://$BUCKET_NAME --region $AWS_REGION || echo "Bucket already exists"
 
       - name: Upload site to S3
         run: |
@@ -53,7 +37,7 @@ jobs:
             --delete \
             --exclude ".git/*" \
             --exclude ".github/*" \
-            --exclude "README.md" 
+            --exclude "README.md"
 
       - name: Check existing CloudFront distribution
         run: |
@@ -67,13 +51,30 @@ jobs:
 
           echo "DIST_ID=$DIST_ID" >> $GITHUB_ENV
 
+      - name: Create CloudFront Origin Access Control (first run only)
+        if: env.DIST_ID == ''
+        run: |
+          # Create OAC so CloudFront can access private S3
+          OAC_ID=$(aws cloudfront create-origin-access-control \
+            --origin-access-control-config '{
+              "Name": "myweb-oac",
+              "Description": "OAC for private S3",
+              "SigningProtocol": "sigv4",
+              "SigningBehavior": "always",
+              "OriginType": "s3"
+            }' \
+            --query 'OriginAccessControl.Id' \
+            --output text)
+
+          echo "OAC_ID=$OAC_ID" >> $GITHUB_ENV
+
       - name: Create CloudFront distribution (first run only)
         if: env.DIST_ID == ''
         run: |
           cat > cf-config.json <<EOF
           {
             "CallerReference": "myweb-$(date +%s)",
-            "Comment": "Static website distribution",
+            "Comment": "Static website distribution with private S3",
             "Enabled": true,
             "DefaultRootObject": "index.html",
             "Origins": {
@@ -82,9 +83,7 @@ jobs:
                 {
                   "Id": "S3Origin",
                   "DomainName": "$BUCKET_NAME.s3.amazonaws.com",
-                  "S3OriginConfig": {
-                    "OriginAccessIdentity": ""
-                  }
+                  "OriginAccessControlId": "$OAC_ID"
                 }
               ]
             },
@@ -102,12 +101,7 @@ jobs:
               "ForwardedValues": {
                 "QueryString": false,
                 "Cookies": { "Forward": "none" }
-              },
-              "TrustedSigners": {
-                "Enabled": false,
-                "Quantity": 0
-              },
-              "MinTTL": 0
+              }
             },
             "Restrictions": {
               "GeoRestriction": {
