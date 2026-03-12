@@ -23,7 +23,7 @@ jobs:
       - name: Configure AWS credentials (OIDC - no secrets!)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::829779198710:role/github-actions-myweb
+          role-to-assume: arn:aws:iam::450974104061:role/github-actions-myweb
           aws-region: us-east-1
 
       - name: Create S3 bucket (safe if exists)
