@@ -30,14 +30,30 @@ jobs:
         run: |
           aws s3 mb s3://$BUCKET_NAME --region us-east-1 || echo "Bucket already exists"
 
+
+      - name: Make S3 bucket public
+        run: |
+          aws s3api put-bucket-policy \
+            --bucket $BUCKET_NAME \
+            --policy '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": "*",
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::'"$BUCKET_NAME"'/*"
+                }
+              ]
+            }'
+
       - name: Upload site to S3
         run: |
           aws s3 sync . s3://$BUCKET_NAME \
             --delete \
             --exclude ".git/*" \
             --exclude ".github/*" \
-            --exclude "README.md" \
-            --acl public-read
+            --exclude "README.md" 
 
       - name: Check existing CloudFront distribution
         run: |
