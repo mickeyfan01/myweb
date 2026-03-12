@@ -9,6 +9,8 @@ This project hosts a static website displaying a simple message including my nam
 
 This is Mickey Fan’s website
 
+can test run using the [url](https://dd054gwpxvlkp.cloudfront.net/)
+
 The website is deployed on AWS S3 and served via CloudFront with automated deployment through GitHub Actions.
 
 ## Architecture & Infrastructure
