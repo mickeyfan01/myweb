@@ -28,7 +28,7 @@ jobs:
         run: aws s3 mb s3://mickeyfan01-myweb --region us-east-1 || echo "Bucket already exists"
 
       - name: Upload index.html to S3 (this is the key step you asked for)
-        run: aws s3 sync . s3://mickeyfan01-myweb --delete --exclude ".git/*" --exclude ".github/*"
+        run: aws s3 sync . s3://mickeyfan01-myweb --delete --exclude ".git/*" --exclude ".github/*" --exclude "README.md" 
 
 #      - name: Invalidate CloudFront cache
 #        run: aws cloudfront create-invalidation --distribution-id YOUR-DISTRIBUTION-ID --paths "/*"   # ← CHANGE THIS
