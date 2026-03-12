@@ -36,7 +36,8 @@ jobs:
             --delete \
             --exclude ".git/*" \
             --exclude ".github/*" \
-            --exclude "README.md"
+            --exclude "README.md" \
+            --acl public-read
 
       - name: Check existing CloudFront distribution
         run: |
