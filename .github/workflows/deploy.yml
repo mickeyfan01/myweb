@@ -23,8 +23,9 @@ jobs:
           role-to-assume: arn:aws:iam::829779198710:role/github-actions-myweb   # ← CHANGE THIS
           aws-region: us-east-1
 
-      - name: Deploy to S3
-        run: aws s3 sync . s3://hello-mickey-YOURNAME-2026 --delete --exclude ".git/*" --exclude ".github/*"
 
-      - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id YOUR-DISTRIBUTION-ID --paths "/*"   # ← CHANGE THIS
+      - name: Create S3 bucket (safe if exists)
+        run: aws s3 mb s3://mickeyfan01-myweb --region us-east-1 || echo "Bucket already exists"
+
+#      - name: Invalidate CloudFront cache
+#        run: aws cloudfront create-invalidation --distribution-id YOUR-DISTRIBUTION-ID --paths "/*"   # ← CHANGE THIS
