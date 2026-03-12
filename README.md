@@ -1,47 +1,48 @@
 # My Personal Website - Infrastructure Engineering Challenge
 
-This repository contains a solution for the Infrastructure Engineering challenge. The goal was to demonstrate my approach to creating a simple static website hosted on AWS using best practices and automated deployment.
+This repository contains my solution to the Infrastructure Engineering challenge. The objective was to demonstrate a clean, secure and automated approach for hosting a simple static website on AWS using cloud practise.
 
 
 ## Project Overview
 
-This project hosts a static website displaying a simple message including my name:
+This project deploys a lightweight static website that deploys a simple message: 
 
-This is Mickey Fan’s website
+``` This is Mickey Fan’s website ```
 
-can test run using this [url](https://dd054gwpxvlkp.cloudfront.net/)
+you can test the running using this [url](https://dd054gwpxvlkp.cloudfront.net/)
 
-The website is deployed on AWS S3 and served via CloudFront with automated deployment through GitHub Actions.
+The website is hosted on AWS S3 and delivered globally through Amazon CloudFront with fully automated deployment powered by GitHub Actions.
 
 ## Architecture & Infrastructure
 
 ### AWS S3 
-- Stores the static website files
-- bucket configured for private access
-- public access is handled through CloudFront’s Origin Access Control (OAC).
+- Stores the static website content
+- Bucket configured for private access
+- CloudFront access is controlled using Origin Access Control (OAC)
 
 ### AWS CloudFront 
-- Acts as a global CDN to serve the website with low latency
-- Configured to redirect all HTTP traffic to HTTPS.
-- Uses cache invalidation automatically after each deployment.
+- Servces the website via a global CDN for low latency
+- Configured to redirect all HTTP traffic to HTTPS
+- invalidation cache after each deployment
 
-### GitHub Actions CI/CD Workflow steps:
-- Checks out the repository.
-- Assumes an AWS IAM role using OIDC for secure access.
-- Creates or updates the S3 bucket.
-- Uploads website files (excluding .git, .github, and README.md).
-- Creates or updates the CloudFront distribution and OAC.
-- Updates the S3 bucket policy to allow CloudFront access.
-- Invalidates the CloudFront cache to serve updated content.
-- The final deployment URL is printed for verification.
+### GitHub Actions CI/CD Pipeline 
+The workflow perform the following steps:
+1. Checks out the repository
+2. Assumes an AWS IAM role using OIDC for secure authenication
+3. Creates or updates the S3 bucket
+4. Uploads website files (excluding .git, .github, and README.md)
+5. Creates or updates the CloudFront distribution and OAC
+6. Updates the S3 bucket policy to allow CloudFront access
+7. Invalidates the CloudFront cache
+8. Print the final deployment URL for verification
 
 ## Steps to Replicate
-- Fork or clone this repository.
-- Configure a GitHub Actions OIDC role in AWS with S3 and CloudFront permissions.
-- Update BUCKET_NAME, AWS_REGION, and IAM role ARN in the workflow.
-- Push changes to main branch or trigger the workflow manually.
-- GitHub Actions will automatically deploy the site to S3 and CloudFront.
-- Access the website using the CloudFront URL displayed at the end of the workflow.
+1. Fork or clone this repository
+2. Configure a GitHub Actions OIDC role in AWS with S3 and CloudFront permissions.
+3. Update BUCKET_NAME, AWS_REGION, and IAM role ARN in the workflow
+4. Push changes to main branch or trigger the workflow manually
+5. GitHub Actions will automatically deploy the site to S3 and CloudFront
+6. Access the website using the CloudFront URL displayed at the end of the workflow
 
 
 ## What I Would Do With More Time
@@ -63,12 +64,10 @@ The website is deployed on AWS S3 and served via CloudFront with automated deplo
 
 ## Alternative Approaches
 ### AWS Amplify
-- Provides an all-in-one hosting solution with CI/CD.
-- I didn’t use it here to show manual control and understanding of the underlying infrastructure.
+A fully managed hosting CI/CD solution and I intetntionaly avoid Amplify to demonstrate explicit control of the underlying AWS infrastructure
 
 ### GCP Hosting
-- Google Cloud Storage + Cloud CDN would offer similar functionality.
-- AWS was chosen due to familiarity
+Hosting could be achieved with Google Cloud Storage + Cloud CDN and AWS was chosen due to familiarity
 
 ## Production-Grade Considerations
 
@@ -77,12 +76,12 @@ The website is deployed on AWS S3 and served via CloudFront with automated deplo
 
 ### Multi-Environment CI/CD
  - Separate staging and production deployments
- - Include automated validation tests before promotion.
+ - Include automated validation tests before promoting release
 
 ### Security & Compliance 
- - Enforce least-privilege IAM policies
- - Enable encryption at rest and in transit (S3 and CloudFront)
- - Regularly audit access logs.
+ - Enforce strict least-privilege IAM policies
+ - Enable encryption at rest and in transit
+ - Regularly audit access logs
 
 ### Collaboration 
  - Document release processes
@@ -96,4 +95,4 @@ This solution demonstrates:
 - Impatience: CloudFront ensures fast, global content delivery.
 - Hubris: Thoughtful consideration for production-readiness, security, and scalability.
 
-The website is simple yet demonstrates best practices in infrastructure engineering, CI/CD automation, and cloud architecture.
+The website is simple yet demonstrates best practices in infrastructure engineering, CI/CD automation and cloud architecture.
